@@ -43,6 +43,7 @@ def make_player_cmd(backend: str, latency_ms: int) -> list:
         return [
             "pw-cat",
             "--playback",
+            "--raw",
             "--format=s16",
             f"--rate={SAMPLE_RATE}",
             f"--channels={CHANNELS}",
