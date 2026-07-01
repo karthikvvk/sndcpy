@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.graphics.drawable.Icon;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.AudioFormat;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
@@ -61,6 +62,9 @@ public class RecordService extends Service {
     private MediaProjection mediaProjection;
     private Thread recorderThread;
 
+    private AudioManager audioManager;
+    private int savedVolume = -1; // -1 means not yet saved
+
     // --- Public API ---
 
     public static void start(Context context, Intent projectionData, String serverIp, int serverPort) {
@@ -104,6 +108,8 @@ public class RecordService extends Service {
         String action = intent.getAction();
 
         if (ACTION_STOP.equals(action)) {
+            // Explicit stop — restore volume immediately (covers both Stop button and notification stop)
+            restorePhoneAudio();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -137,6 +143,9 @@ public class RecordService extends Service {
         super.onDestroy();
         sRunning = false;
         stopForeground(true);
+        // Safety net: restore volume if the service is killed by OS or crashes
+        // without going through ACTION_STOP (idempotent — only runs if savedVolume was set)
+        restorePhoneAudio();
         if (recorderThread != null) {
             recorderThread.interrupt();
             recorderThread = null;
@@ -153,6 +162,28 @@ public class RecordService extends Service {
         return recorderThread != null && recorderThread.isAlive();
     }
 
+    // --- Volume management ---
+
+    /** Saves current media volume and mutes it so audio plays only on the PC. */
+    private void mutePhoneAudio() {
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        savedVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);
+        Log.i(TAG, "Phone audio muted (saved volume: " + savedVolume + ")");
+    }
+
+    /**
+     * Restores the media volume to what it was before muting.
+     * Idempotent — safe to call multiple times; only acts if volume was previously saved.
+     */
+    private void restorePhoneAudio() {
+        if (audioManager != null && savedVolume >= 0) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, savedVolume, 0);
+            Log.i(TAG, "Phone audio restored to " + savedVolume);
+            savedVolume = -1; // reset sentinel so subsequent calls are no-ops
+        }
+    }
+
     private void startRecording(final String serverIp, final int serverPort) {
         final AudioRecord recorder = createAudioRecord();
 
@@ -162,6 +193,8 @@ public class RecordService extends Service {
             return;
         }
 
+        // Mute phone speaker so audio only plays on the PC
+        mutePhoneAudio();
         recorder.startRecording();
         Log.i(TAG, "AudioRecord started. Streaming to " + serverIp + ":" + serverPort);
 

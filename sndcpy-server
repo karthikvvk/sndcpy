@@ -35,6 +35,7 @@ def make_player_cmd(backend: str, latency_ms: int) -> list:
             "--rawaud-samplerate", str(SAMPLE_RATE),
             "--rawaud-channels", str(CHANNELS),
             "--rawaud-fourcc", "s16l",       # signed 16-bit little-endian PCM
+            "--audio-channels", str(CHANNELS), # force stereo output (prevents karaoke/phase effect)
             "--network-caching", str(latency_ms),
             "--play-and-exit",
             "-",
@@ -47,6 +48,7 @@ def make_player_cmd(backend: str, latency_ms: int) -> list:
             "--format=s16",
             f"--rate={SAMPLE_RATE}",
             f"--channels={CHANNELS}",
+            "--channel-map=FL,FR",           # force explicit L/R mapping (prevents karaoke/phase effect)
             f"--latency={latency_ms}ms",
             "-",
         ]
